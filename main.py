@@ -1,14 +1,44 @@
-from fastapi import FastAPI
+import mysql.connector
+from fastapi import FastAPI, HTTPException
 
 app = FastAPI(
     title="CogniStream API",
-    description="Backend API for Developer Flow-State and Cognitive Load Analytics",
+    description="Developer Flow-State and Cognitive Load Analytics",
     version="1.0.0"
 )
 
 
+# ==========================================
+# MySQL Database Connection
+# ==========================================
+
+def get_connection():
+
+    try:
+        connection = mysql.connector.connect(
+            host="localhost",
+            port=3306,
+            user="****",
+            password="****",
+            database="cognistream"
+        )
+
+        return connection
+
+    except mysql.connector.Error as error:
+        raise HTTPException(
+            status_code=500,
+            detail=f"MySQL connection failed: {error}"
+        )
+
+
+# ==========================================
+# Home Endpoint
+# ==========================================
+
 @app.get("/")
 def home():
+
     return {
         "project": "CogniStream",
         "message": "CogniStream API is running successfully!",
@@ -16,35 +46,109 @@ def home():
     }
 
 
+# ==========================================
+# Database Health Check
+# ==========================================
+
 @app.get("/api/health")
 def health_check():
-    return {
-        "status": "healthy",
-        "message": "Backend is working properly"
-    }
 
+    connection = get_connection()
+
+    try:
+        cursor = connection.cursor()
+        cursor.execute("SELECT DATABASE()")
+
+        database_name = cursor.fetchone()[0]
+
+        return {
+            "status": "healthy",
+            "database": database_name,
+            "message": "MySQL connection successful"
+        }
+
+    finally:
+        cursor.close()
+        connection.close()
+
+
+# ==========================================
+# Dashboard Summary
+# ==========================================
 
 @app.get("/api/summary")
 def dashboard_summary():
-    return {
-        "total_sessions": 0,
-        "total_interruptions": 0,
-        "average_session_duration": 0,
-        "flow_sessions": 0
-    }
 
+    connection = get_connection()
+
+    try:
+        cursor = connection.cursor()
+
+        cursor.execute(
+            "SELECT COUNT(*) FROM coding_sessions"
+        )
+        total_sessions = cursor.fetchone()[0]
+
+        cursor.execute(
+            "SELECT COUNT(*) FROM session_interruptions"
+        )
+        total_interruptions = cursor.fetchone()[0]
+
+        return {
+            "total_sessions": total_sessions,
+            "total_interruptions": total_interruptions
+        }
+
+    finally:
+        cursor.close()
+        connection.close()
+
+
+# ==========================================
+# Retrieve Coding Sessions
+# ==========================================
 
 @app.get("/api/sessions")
 def get_sessions():
-    return {
-        "message": "Coding sessions endpoint",
-        "data": []
-    }
 
+    connection = get_connection()
+
+    try:
+        cursor = connection.cursor(dictionary=True)
+
+        cursor.execute("SELECT * FROM coding_sessions")
+        sessions = cursor.fetchall()
+
+        return {
+            "total_sessions": len(sessions),
+            "data": sessions
+        }
+
+    finally:
+        cursor.close()
+        connection.close()
+
+
+# ==========================================
+# Retrieve Slack Interruptions
+# ==========================================
 
 @app.get("/api/interruptions")
 def get_interruptions():
-    return {
-        "message": "Slack interruptions endpoint",
-        "data": []
-    }
+
+    connection = get_connection()
+
+    try:
+        cursor = connection.cursor(dictionary=True)
+
+        cursor.execute("SELECT * FROM session_interruptions")
+        interruptions = cursor.fetchall()
+
+        return {
+            "total_interruptions": len(interruptions),
+            "data": interruptions
+        }
+
+    finally:
+        cursor.close()
+        connection.close()
