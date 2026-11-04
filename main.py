@@ -152,3 +152,74 @@ def get_interruptions():
     finally:
         cursor.close()
         connection.close()
+
+# ==========================================
+# DAY 3 - API DEVELOPMENT
+# ==========================================
+
+# 1. Session Duration Metrics
+@app.get("/api/metrics/duration")
+def session_duration_metrics():
+
+    connection = get_connection()
+
+    try:
+        cursor = connection.cursor(dictionary=True)
+
+        cursor.execute("""
+            SELECT
+                COUNT(*) AS total_sessions,
+                AVG(duration_minutes) AS average_duration_minutes,
+                MAX(duration_minutes) AS longest_session_minutes,
+                MIN(duration_minutes) AS shortest_session_minutes
+            FROM coding_sessions
+        """)
+
+        metrics = cursor.fetchone()
+
+        return {
+            "status": "success",
+            "duration_metrics": metrics
+        }
+
+    finally:
+        cursor.close()
+        connection.close()
+
+
+# 2. 90-Minute Uninterrupted Flow Metrics
+@app.get("/api/metrics/flow")
+def flow_metrics():
+
+    connection = get_connection()
+
+    try:
+        cursor = connection.cursor(dictionary=True)
+
+        cursor.execute("""
+            SELECT
+                COUNT(*) AS total_sessions,
+                SUM(meets_90min_flow_criteria) AS qualifying_sessions
+            FROM coding_sessions
+        """)
+
+        metrics = cursor.fetchone()
+
+        total_sessions = metrics["total_sessions"] or 0
+        qualifying_sessions = metrics["qualifying_sessions"] or 0
+
+        return {
+            "status": "success",
+            "flow_metrics": {
+                "total_sessions": total_sessions,
+                "qualifying_sessions": qualifying_sessions,
+                "non_qualifying_sessions": (
+                    total_sessions - qualifying_sessions
+                ),
+                "flow_criteria_minutes": 90
+            }
+        }
+
+    finally:
+        cursor.close()
+        connection.close()
