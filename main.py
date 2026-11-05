@@ -18,8 +18,8 @@ def get_connection():
         connection = mysql.connector.connect(
             host="localhost",
             port=3306,
-            user="****",
-            password="****",
+            user="root",
+            password="gitika_14",
             database="cognistream"
         )
 
@@ -53,10 +53,13 @@ def home():
 @app.get("/api/health")
 def health_check():
 
-    connection = get_connection()
+    connection = None
+    cursor = None
 
     try:
+        connection = get_connection()
         cursor = connection.cursor()
+
         cursor.execute("SELECT DATABASE()")
 
         database_name = cursor.fetchone()[0]
@@ -67,9 +70,20 @@ def health_check():
             "message": "MySQL connection successful"
         }
 
+    except mysql.connector.Error as error:
+
+        raise HTTPException(
+            status_code=500,
+            detail=f"MySQL connection failed: {error}"
+        )
+
     finally:
-        cursor.close()
-        connection.close()
+
+        if cursor:
+            cursor.close()
+
+        if connection:
+            connection.close()
 
 
 # ==========================================
@@ -82,22 +96,60 @@ def dashboard_summary():
     connection = get_connection()
 
     try:
-        cursor = connection.cursor()
+        cursor = connection.cursor(dictionary=True)
 
-        cursor.execute(
-            "SELECT COUNT(*) FROM coding_sessions"
-        )
-        total_sessions = cursor.fetchone()[0]
+        cursor.execute("""
+            SELECT
+                COUNT(*) AS total_sessions,
+                COALESCE(SUM(duration_minutes), 0)
+                    AS total_coding_minutes,
+                COALESCE(AVG(duration_minutes), 0)
+                    AS average_session_duration,
+                COALESCE(MAX(duration_minutes), 0)
+                    AS longest_session,
+                COALESCE(MIN(duration_minutes), 0)
+                    AS shortest_session,
+                COALESCE(SUM(meets_90min_flow_criteria), 0)
+                    AS qualifying_sessions
+            FROM coding_sessions
+        """)
 
-        cursor.execute(
-            "SELECT COUNT(*) FROM session_interruptions"
+        session_metrics = cursor.fetchone()
+
+        cursor.execute("""
+            SELECT COUNT(*) AS total_interruptions
+            FROM session_interruptions
+        """)
+
+        interruption_metrics = cursor.fetchone()
+
+        total_sessions = session_metrics["total_sessions"]
+        total_interruptions = interruption_metrics["total_interruptions"]
+
+        average_interruptions = (
+            total_interruptions / total_sessions
+            if total_sessions > 0 else 0
         )
-        total_interruptions = cursor.fetchone()[0]
 
         return {
-            "total_sessions": total_sessions,
-            "total_interruptions": total_interruptions
+            "status": "success",
+            "summary": {
+                "total_sessions": total_sessions,
+                "total_interruptions": total_interruptions,
+                "total_coding_minutes": session_metrics["total_coding_minutes"],
+                "average_session_duration": session_metrics["average_session_duration"],
+                "longest_session": session_metrics["longest_session"],
+                "shortest_session": session_metrics["shortest_session"],
+                "average_interruptions_per_session": average_interruptions,
+                "qualifying_sessions": session_metrics["qualifying_sessions"]
+            }
         }
+
+    except mysql.connector.Error as error:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Database error: {error}"
+        )
 
     finally:
         cursor.close()
